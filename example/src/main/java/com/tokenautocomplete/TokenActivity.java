@@ -3,6 +3,7 @@ package com.tokenautocomplete;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -39,13 +40,13 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
             public View getView(int position, View convertView, ViewGroup parent) {
                 if (convertView == null) {
 
-                    LayoutInflater l = (LayoutInflater)getContext().getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
+                    LayoutInflater l = (LayoutInflater) getContext().getSystemService(Activity.LAYOUT_INFLATER_SERVICE);
                     convertView = l.inflate(R.layout.person_layout, parent, false);
                 }
 
                 Person p = getItem(position);
-                ((TextView)convertView.findViewById(R.id.name)).setText(p.getName());
-                ((TextView)convertView.findViewById(R.id.email)).setText(p.getEmail());
+                ((TextView) convertView.findViewById(R.id.name)).setText(p.getName());
+                ((TextView) convertView.findViewById(R.id.email)).setText(p.getEmail());
 
                 return convertView;
             }
@@ -57,7 +58,7 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
             }
         };
 
-        completionView = (ContactsCompletionView)findViewById(R.id.searchView);
+        completionView = (ContactsCompletionView) findViewById(R.id.searchView);
         completionView.setAdapter(adapter);
         completionView.setTokenListener(this);
         completionView.setTokenClickStyle(TokenCompleteTextView.TokenClickStyle.Select);
@@ -69,7 +70,7 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
             completionView.addObject(people[1]);
         }
 
-        Button removeButton = (Button)findViewById(R.id.removeButton);
+        Button removeButton = (Button) findViewById(R.id.removeButton);
         removeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -80,7 +81,7 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
             }
         });
 
-        Button addButton = (Button)findViewById(R.id.addButton);
+        Button addButton = (Button) findViewById(R.id.addButton);
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -88,28 +89,37 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
                 completionView.addObject(people[rand.nextInt(people.length)]);
             }
         });
+
+        Button removeAll = findViewById(R.id.removeAll);
+        removeAll.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                completionView.clear(false);
+            }
+        });
     }
 
     private void updateTokenConfirmation() {
         StringBuilder sb = new StringBuilder("Current tokens:\n");
-        for (Object token: completionView.getObjects()) {
+        for (Object token : completionView.getObjects()) {
             sb.append(token.toString());
             sb.append("\n");
         }
 
-        ((TextView)findViewById(R.id.tokens)).setText(sb);
+        ((TextView) findViewById(R.id.tokens)).setText(sb);
     }
 
 
     @Override
     public void onTokenAdded(Person token) {
-        ((TextView)findViewById(R.id.lastEvent)).setText("Added: " + token);
+        ((TextView) findViewById(R.id.lastEvent)).setText("Added: " + token);
         updateTokenConfirmation();
     }
 
     @Override
     public void onTokenRemoved(Person token) {
-        ((TextView)findViewById(R.id.lastEvent)).setText("Removed: " + token);
+        Log.d(TokenActivity.class.getSimpleName(), "token " + token.getName() + " was removed");
+        ((TextView) findViewById(R.id.lastEvent)).setText("Removed: " + token);
         updateTokenConfirmation();
     }
 

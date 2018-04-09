@@ -255,6 +255,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
 
     /**
      * Override if you want to prevent a token from being removed. Defaults to true.
+     *
      * @param token the token to check
      * @return false if the token should not be removed, true if it's ok to remove it.
      */
@@ -299,7 +300,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
      * 'olive', 'purple', 'silver', 'teal'.</p>
      *
      * @param prefix prefix
-     * @param color A single color value in the form 0xAARRGGBB.
+     * @param color  A single color value in the form 0xAARRGGBB.
      */
     @SuppressWarnings("SameParameterValue")
     public void setPrefix(CharSequence prefix, int color) {
@@ -421,8 +422,9 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
 
     /**
      * Correctly build accessibility string for token contents
-     *
+     * <p>
      * This seems to be a hidden API, but there doesn't seem to be another reasonable way
+     *
      * @return custom string for accessibility
      */
     @SuppressWarnings("unused")
@@ -484,7 +486,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
     @SuppressWarnings("unused")
     public void clearCompletionText() {
         //Respect currentCompletionText in case hint is visible or if other checks are added.
-        if (currentCompletionText().length() == 0){
+        if (currentCompletionText().length() == 0) {
             return;
         }
 
@@ -952,7 +954,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
     /**
      * Append a token object to the object list
      *
-     * @param object     the object to add to the displayed tokens
+     * @param object the object to add to the displayed tokens
      */
     public void addObject(final T object) {
         post(new Runnable() {
@@ -1059,7 +1061,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
     /**
      * Insert a new span for an Object
      *
-     * @param object     Object to create a span for
+     * @param object Object to create a span for
      */
     private void insertSpan(T object) {
         SpannableStringBuilder ssb = buildTokenSpannable();
@@ -1115,9 +1117,17 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
      */
     @SuppressWarnings("unused")
     public void clear() {
+        clear(true);
+    }
+
+    public void clear(final boolean callback) {
         post(new Runnable() {
             @Override
             public void run() {
+                TokenListener backupListener = listener;
+                if (!callback) {
+                    listener = null;
+                }
                 // If there's no text, we're already empty
                 Editable text = getText();
                 if (text == null) return;
@@ -1130,6 +1140,7 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
                     // Make sure the callback gets called
                     spanWatcher.onSpanRemoved(text, span, text.getSpanStart(span), text.getSpanEnd(span));
                 }
+                listener = backupListener;
             }
         });
     }
@@ -1250,11 +1261,21 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
         }
     }
 
-    public interface TokenListener<T> {
+    //Used to determine if we can use the Parcelable interface
+    private Class reifyParameterizedTypeClass() {
+        //Borrowed from http://codyaray.com/2013/01/finding-generic-type-parameters-with-guava
 
-        void onTokenAdded(T token);
-        void onTokenRemoved(T token);
-        void onDuplicateRemoved(T token);
+        //Figure out what class of objects we have
+        Class<?> viewClass = getClass();
+        while (!viewClass.getSuperclass().equals(TokenCompleteTextView.class)) {
+            viewClass = viewClass.getSuperclass();
+        }
+
+        // This operation is safe. Because viewClass is a direct sub-class, getGenericSuperclass() will
+        // always return the Type of this class. Because this class is parameterized, the cast is safe
+        ParameterizedType superclass = (ParameterizedType) viewClass.getGenericSuperclass();
+        Type type = superclass.getActualTypeArguments()[0];
+        return (Class) type;
     }
 
     private class TokenSpanWatcher implements SpanWatcher {
@@ -1383,21 +1404,48 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
         return (List<T>) s;
     }
 
-    //Used to determine if we can use the Parcelable interface
-    private Class reifyParameterizedTypeClass() {
-        //Borrowed from http://codyaray.com/2013/01/finding-generic-type-parameters-with-guava
-
-        //Figure out what class of objects we have
-        Class<?> viewClass = getClass();
-        while (!viewClass.getSuperclass().equals(TokenCompleteTextView.class)) {
-            viewClass = viewClass.getSuperclass();
+    @SuppressWarnings("unchecked")
+    @Override
+    public void onRestoreInstanceState(Parcelable state) {
+        if (!(state instanceof SavedState)) {
+            super.onRestoreInstanceState(state);
+            return;
         }
 
-        // This operation is safe. Because viewClass is a direct sub-class, getGenericSuperclass() will
-        // always return the Type of this class. Because this class is parameterized, the cast is safe
-        ParameterizedType superclass = (ParameterizedType) viewClass.getGenericSuperclass();
-        Type type = superclass.getActualTypeArguments()[0];
-        return (Class)type;
+        SavedState ss = (SavedState) state;
+        super.onRestoreInstanceState(ss.getSuperState());
+
+        setText(ss.prefix);
+        prefix = ss.prefix;
+        updateHint();
+        allowCollapse = ss.allowCollapse;
+        allowDuplicates = ss.allowDuplicates;
+        performBestGuess = ss.performBestGuess;
+        tokenClickStyle = ss.tokenClickStyle;
+        splitChar = ss.splitChar;
+        addListeners();
+
+        List<T> objects;
+        if (SavedState.SERIALIZABLE_PLACEHOLDER.equals(ss.parcelableClassName)) {
+            objects = convertSerializableObjectsToTypedObjects(ss.baseObjects);
+        } else {
+            objects = (List<T>) ss.baseObjects;
+        }
+
+        for (T obj : objects) {
+            addObject(obj);
+        }
+
+        // Collapse the view if necessary
+        if (!isFocused() && allowCollapse) {
+            post(new Runnable() {
+                @Override
+                public void run() {
+                    //Resize the view and display the +x if appropriate
+                    performCollapse(isFocused());
+                }
+            });
+        }
     }
 
     @Override
@@ -1441,133 +1489,9 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
         return state;
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public void onRestoreInstanceState(Parcelable state) {
-        if (!(state instanceof SavedState)) {
-            super.onRestoreInstanceState(state);
-            return;
-        }
-
-        SavedState ss = (SavedState) state;
-        super.onRestoreInstanceState(ss.getSuperState());
-
-        setText(ss.prefix);
-        prefix = ss.prefix;
-        updateHint();
-        allowCollapse = ss.allowCollapse;
-        allowDuplicates = ss.allowDuplicates;
-        performBestGuess = ss.performBestGuess;
-        tokenClickStyle = ss.tokenClickStyle;
-        splitChar = ss.splitChar;
-        addListeners();
-
-        List<T> objects;
-        if (SavedState.SERIALIZABLE_PLACEHOLDER.equals(ss.parcelableClassName)) {
-            objects = convertSerializableObjectsToTypedObjects(ss.baseObjects);
-        } else {
-            objects = (List<T>)ss.baseObjects;
-        }
-
-        for (T obj: objects) {
-            addObject(obj);
-        }
-
-        // Collapse the view if necessary
-        if (!isFocused() && allowCollapse) {
-            post(new Runnable() {
-                @Override
-                public void run() {
-                    //Resize the view and display the +x if appropriate
-                    performCollapse(isFocused());
-                }
-            });
-        }
-    }
-
-    /**
-     * Handle saving the token state
-     */
-    private static class SavedState extends BaseSavedState {
-        static final String SERIALIZABLE_PLACEHOLDER = "Serializable";
-
-        CharSequence prefix;
-        boolean allowCollapse;
-        boolean allowDuplicates;
-        boolean performBestGuess;
-        TokenClickStyle tokenClickStyle;
-        String parcelableClassName;
-        List<?> baseObjects;
-        char[] splitChar;
-
-        @SuppressWarnings("unchecked")
-        SavedState(Parcel in) {
-            super(in);
-            prefix = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(in);
-            allowCollapse = in.readInt() != 0;
-            allowDuplicates = in.readInt() != 0;
-            performBestGuess = in.readInt() != 0;
-            tokenClickStyle = TokenClickStyle.values()[in.readInt()];
-            parcelableClassName = in.readString();
-            if (SERIALIZABLE_PLACEHOLDER.equals(parcelableClassName)) {
-                baseObjects = (ArrayList)in.readSerializable();
-            } else {
-                try {
-                    ClassLoader loader = Class.forName(parcelableClassName).getClassLoader();
-                    baseObjects = in.readArrayList(loader);
-                } catch (ClassNotFoundException ex) {
-                    //This should really never happen, class had to be available to get here
-                    throw new RuntimeException(ex);
-                }
-            }
-            splitChar = in.createCharArray();
-        }
-
-        SavedState(Parcelable superState) {
-            super(superState);
-        }
-
-        @Override
-        public void writeToParcel(@NonNull Parcel out, int flags) {
-            super.writeToParcel(out, flags);
-            TextUtils.writeToParcel(prefix, out, 0);
-            out.writeInt(allowCollapse ? 1 : 0);
-            out.writeInt(allowDuplicates ? 1 : 0);
-            out.writeInt(performBestGuess ? 1 : 0);
-            out.writeInt(tokenClickStyle.ordinal());
-            if (SERIALIZABLE_PLACEHOLDER.equals(parcelableClassName)) {
-                out.writeString(SERIALIZABLE_PLACEHOLDER);
-                out.writeSerializable((Serializable)baseObjects);
-            } else {
-                out.writeString(parcelableClassName);
-                out.writeList(baseObjects);
-            }
-            out.writeCharArray(splitChar);
-        }
-
-        @Override
-        public String toString() {
-            String str = "TokenCompleteTextView.SavedState{"
-                    + Integer.toHexString(System.identityHashCode(this))
-                    + " tokens=" + baseObjects;
-            return str + "}";
-        }
-
-        @SuppressWarnings("hiding")
-        public static final Parcelable.Creator<SavedState> CREATOR
-                = new Parcelable.Creator<SavedState>() {
-            public SavedState createFromParcel(Parcel in) {
-                return new SavedState(in);
-            }
-
-            public SavedState[] newArray(int size) {
-                return new SavedState[size];
-            }
-        };
-    }
-
     /**
      * Checks if selection can be deleted. This method is called from TokenInputConnection .
+     *
      * @param beforeLength the number of characters before the current selection end to check
      * @return true if there are no non-deletable pieces of the section
      */
@@ -1607,6 +1531,96 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
             }
         }
         return true;
+    }
+
+    public interface TokenListener<T> {
+
+        void onTokenAdded(T token);
+
+        void onTokenRemoved(T token);
+
+        void onDuplicateRemoved(T token);
+    }
+
+    /**
+     * Handle saving the token state
+     */
+    private static class SavedState extends BaseSavedState {
+        static final String SERIALIZABLE_PLACEHOLDER = "Serializable";
+
+        CharSequence prefix;
+        boolean allowCollapse;
+        boolean allowDuplicates;
+        boolean performBestGuess;
+        TokenClickStyle tokenClickStyle;
+        String parcelableClassName;
+        List<?> baseObjects;
+        char[] splitChar;
+
+        @SuppressWarnings("unchecked")
+        SavedState(Parcel in) {
+            super(in);
+            prefix = TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(in);
+            allowCollapse = in.readInt() != 0;
+            allowDuplicates = in.readInt() != 0;
+            performBestGuess = in.readInt() != 0;
+            tokenClickStyle = TokenClickStyle.values()[in.readInt()];
+            parcelableClassName = in.readString();
+            if (SERIALIZABLE_PLACEHOLDER.equals(parcelableClassName)) {
+                baseObjects = (ArrayList) in.readSerializable();
+            } else {
+                try {
+                    ClassLoader loader = Class.forName(parcelableClassName).getClassLoader();
+                    baseObjects = in.readArrayList(loader);
+                } catch (ClassNotFoundException ex) {
+                    //This should really never happen, class had to be available to get here
+                    throw new RuntimeException(ex);
+                }
+            }
+            splitChar = in.createCharArray();
+        }
+
+        SavedState(Parcelable superState) {
+            super(superState);
+        }
+
+        @Override
+        public void writeToParcel(@NonNull Parcel out, int flags) {
+            super.writeToParcel(out, flags);
+            TextUtils.writeToParcel(prefix, out, 0);
+            out.writeInt(allowCollapse ? 1 : 0);
+            out.writeInt(allowDuplicates ? 1 : 0);
+            out.writeInt(performBestGuess ? 1 : 0);
+            out.writeInt(tokenClickStyle.ordinal());
+            if (SERIALIZABLE_PLACEHOLDER.equals(parcelableClassName)) {
+                out.writeString(SERIALIZABLE_PLACEHOLDER);
+                out.writeSerializable((Serializable) baseObjects);
+            } else {
+                out.writeString(parcelableClassName);
+                out.writeList(baseObjects);
+            }
+            out.writeCharArray(splitChar);
+        }
+
+        @Override
+        public String toString() {
+            String str = "TokenCompleteTextView.SavedState{"
+                    + Integer.toHexString(System.identityHashCode(this))
+                    + " tokens=" + baseObjects;
+            return str + "}";
+        }
+
+        @SuppressWarnings("hiding")
+        public static final Parcelable.Creator<SavedState> CREATOR
+                = new Parcelable.Creator<SavedState>() {
+            public SavedState createFromParcel(Parcel in) {
+                return new SavedState(in);
+            }
+
+            public SavedState[] newArray(int size) {
+                return new SavedState[size];
+            }
+        };
     }
 
     private class TokenInputConnection extends InputConnectionWrapper {
