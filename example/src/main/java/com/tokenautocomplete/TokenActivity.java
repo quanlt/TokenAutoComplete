@@ -126,4 +126,9 @@ public class TokenActivity extends Activity implements TokenCompleteTextView.Tok
     @Override
     public void onDuplicateRemoved(Person token) {
     }
+
+    @Override
+    public void onEmptyViewClicked() {
+        Log.d(TokenActivity.class.getSimpleName(), "onEmptyViewClicked");
+    }
 }

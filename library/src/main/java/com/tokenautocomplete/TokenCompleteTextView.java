@@ -699,6 +699,9 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
                 } else {
                     //We didn't click on a token, so if any are selected, we should clear that
                     clearSelections();
+                    if (listener != null) {
+                        listener.onEmptyViewClicked();
+                    }
                 }
             }
         }
@@ -1539,6 +1542,8 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
         void onTokenRemoved(T token);
 
         void onDuplicateRemoved(T token);
+
+        void onEmptyViewClicked();
     }
 
     /**
