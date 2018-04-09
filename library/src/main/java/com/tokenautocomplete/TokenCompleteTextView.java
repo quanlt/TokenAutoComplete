@@ -289,7 +289,6 @@ public abstract class TokenCompleteTextView<T> extends MultiAutoCompleteTextView
 
     /**
      * <p>You can get a color integer either using
-     * {@link android.support.v4.content.ContextCompat#getColor(android.content.Context, int)}
      * or with {@link android.graphics.Color#parseColor(String)}.</p>
      * <p>{@link android.graphics.Color#parseColor(String)}
      * accepts these formats (copied from android.graphics.Color):
